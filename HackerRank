@@ -1,0 +1,69 @@
+https://www.hackerrank.com/challenges/15-days-of-learning-sql/problem?isFullScreen=true
+
+WITH cte1
+AS -- Create a list of distinct submission date
+    (
+    SELECT DISTINCT submission_date AS submission_date
+    FROM Submissions
+    ), cte2
+AS -- Create a list of all possible combinations of submission dates and hacker IDs
+    (
+    SELECT submission_date, hacker_id, name
+    FROM cte1
+    CROSS JOIN Hackers H
+    ), cte3
+AS -- Create a list of number of 'required participation days'
+    (
+    SELECT submission_date, ROW_NUMBER() OVER (
+            ORDER BY submission_date ASC
+            ) AS date_rank
+    FROM cte1
+    ), cte4
+AS -- Record the count of submissions for each id in current date; and 
+    -- Record whether or not the hacker made any submission during the current date (returns 0 if not; 1 if yes)   
+    (
+    SELECT cte2.submission_date, cte2.hacker_id, cte2.name, COUNT(S.submission_id) AS submission_cnt, CASE 
+            WHEN COUNT(S.submission_id) > 0
+                THEN 1
+            ELSE 0
+            END any_submission
+    FROM Submissions S
+    RIGHT JOIN cte2 ON S.submission_date = cte2.submission_date
+        AND S.hacker_id = cte2.hacker_id
+    GROUP BY cte2.submission_date, cte2.hacker_id, cte2.name
+    ), cte5
+AS -- Record the the number of days the hacker made at least 1 submission during the day to the current date; and
+    -- Join the date_rank column from cte3
+    (
+    SELECT cte4.submission_date, cte4.hacker_id, cte4.name, cte4.submission_cnt, cte4.any_submission, SUM(any_submission) OVER (
+            PARTITION BY hacker_id ORDER BY cte4.submission_date
+            ) AS submission_day_cnt, cte3.date_rank
+    FROM cte4
+    LEFT JOIN cte3 ON cte4.submission_date = cte3.submission_date
+    ), cte6
+AS -- Select the maximum number of submissions for each day
+    (
+    SELECT submission_date, MAX(submission_cnt) AS max_submission_cnt
+    FROM cte5
+    GROUP BY submission_date
+    ), cte7
+AS -- Select the number of hackers who made at least submission each day up to the current date
+    (
+    SELECT submission_date, count(*) AS cnt_hacker
+    FROM cte5
+    WHERE submission_day_cnt = date_rank
+    GROUP BY submission_date
+    ), cte8
+AS -- Select the hacker who has a maximum number of submissions on the current date
+    (
+    SELECT cte5.submission_date, cte5.hacker_id, cte5.name, RANK() OVER (
+            PARTITION BY cte5.submission_date ORDER BY cte5.hacker_id
+            ) AS id_rank
+    FROM cte5
+    INNER JOIN cte6 ON cte5.submission_date = cte6.submission_date
+        AND cte5.submission_cnt = cte6.max_submission_cnt
+    )
+SELECT cte7.submission_date, cte7.cnt_hacker, cte8.hacker_id, cte8.name
+FROM cte7
+RIGHT JOIN cte8 ON cte7.submission_date = cte8.submission_date
+WHERE cte8.id_rank = 1
